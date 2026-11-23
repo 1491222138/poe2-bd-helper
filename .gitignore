@@ -1,0 +1,29 @@
+# Local environment & secrets
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Web / Extension
+node_modules/
+dist/
+build/
+.vite/
+
+# Rust / Tauri
+target/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Large external assets (kept outside git; verified via pob2-engine.lock)
+pob2-engine/
+backend/data/raw/
+backend/data/prices.json

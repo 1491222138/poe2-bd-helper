@@ -42,8 +42,18 @@ local okBoot, bootErr = pcall(function()
   dofile("HeadlessWrapper.lua")
 end)
 
-if not okBoot or not __mainObject__ or not __mainObject__.main then
-  local msg = tostring(bootErr or "HeadlessWrapper 未初始化 __mainObject__.main"):gsub("[\r\n]+", " ")
+-- 兼容不同版本 PoB2 HeadlessWrapper：
+--   - 新版（含 _SimpleGraphic.def.lua）暴露全局 __mainObject__
+--   - v0.23.1 等历史发行版使用局部 mainObject，但 Launch.lua / Main.lua 始终暴露全局 launch 与 main
+local mainObj = __mainObject__ or launch
+local mainCtrl = (mainObj and mainObj.main) or main
+if mainCtrl and mainCtrl.modes and mainCtrl.modes["BUILD"] and not build then
+  build = mainCtrl.modes["BUILD"]
+end
+
+if not okBoot or not mainCtrl or (mainObj and mainObj.promptMsg) then
+  local prompt = mainObj and mainObj.promptMsg
+  local msg = tostring(bootErr or prompt or "HeadlessWrapper 未初始化 main 对象"):gsub("[\r\n]+", " ")
   io.stdout:write("BOOT_ERR\t" .. msg .. "\n")
   io.stdout:flush()
   os.exit(1)
@@ -1182,9 +1192,12 @@ local function runOne(id, path, lockKey, includeAudit)
   end
   local t0 = nowMs()
   local ok, err = pcall(function()
-    __mainObject__.main:SetMode("BUILD", false, "Sim", xml, true)
+    mainCtrl:SetMode("BUILD", false, "Sim", xml, true)
     runCallback("OnFrame")
     runCallback("OnFrame")
+    if mainCtrl.modes and mainCtrl.modes["BUILD"] then
+      build = mainCtrl.modes["BUILD"]
+    end
   end)
   local dt = nowMs() - t0
   if not ok then

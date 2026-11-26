@@ -417,6 +417,8 @@ def handle_stream(handler: Any, rt: Any, body: dict[str, Any]) -> None:
                 if etype == "done" and mode in ("copy", "consult", "target", "gap") and (ev.get("text") or ev.get("copyPlan")):
                     ev = _save_stream_plan_if_needed(rt, body, mode, raw_code, prof, copy_ctx, active_league, ev)
                 _emit(ev)
+        except ValueError as stream_exc:
+            _emit({"type": "error", "error": str(stream_exc)})
         except Exception as stream_exc:  # noqa: BLE001
             _emit({"type": "error", "error": f"{type(stream_exc).__name__}: {stream_exc}"})
         finally:

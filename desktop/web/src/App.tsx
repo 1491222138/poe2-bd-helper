@@ -317,6 +317,8 @@ export const App: React.FC = () => {
         positioning: parsed.target?.positioning,
       });
       setTargetBuild(saved);
+      setAiError("");
+      setAiRatingError("");
       if (parsed.prices) {
         await desktopApi.savePrices(parsed.prices);
         setPriceSnapshot(parsed.prices);
@@ -395,6 +397,8 @@ export const App: React.FC = () => {
           : { pobCode: parsed.pobCode }
       );
       setTargetBuild(saved);
+      setAiError("");
+      setAiRatingError("");
       if (parsed.prices) {
         await desktopApi.savePrices(parsed.prices);
         setPriceSnapshot(parsed.prices);
@@ -602,6 +606,10 @@ export const App: React.FC = () => {
     }
     if (candidate) {
       lastRestoredBuildRef.current = currentPobHash;
+      if (buildChanged) {
+        setAiError("");
+        setAiRatingError("");
+      }
       setActivePlanId(candidate.id);
       setAiResult({
         text: candidate.text,
@@ -613,6 +621,8 @@ export const App: React.FC = () => {
       });
     } else if (buildChanged) {
       lastRestoredBuildRef.current = currentPobHash;
+      setAiError("");
+      setAiRatingError("");
       setActivePlanId(null);
       setAiResult(null);
     }

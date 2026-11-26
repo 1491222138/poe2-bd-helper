@@ -161,10 +161,16 @@ def handle_post(rt: Any, path: str, body: dict[str, Any]) -> Optional[tuple[int,
 
     if path == "/builds/target":
         payload = dict(body)
-        if not payload.get("positioning") and payload.get("pobCode"):
+        raw_pob = str(payload.get("pobCode") or "").strip()
+        if not raw_pob:
+            raise ValueError("目标 BD 的 PoB2 分享码为空")
+        # 严格校验 PoB2 分享码可解码，避免损坏/截断/测试占位字符串污染本地 target_build.json
+        pob_parser.decode_pob(raw_pob)
+        payload["pobCode"] = raw_pob
+        if not payload.get("positioning"):
             try:
                 prof = build_profile.extract_profile(
-                    payload["pobCode"],
+                    raw_pob,
                     run_simulation=False,
                     price_snapshot=rt.store.get_prices(),
                 )
@@ -184,9 +190,14 @@ def handle_post(rt: Any, path: str, body: dict[str, Any]) -> Optional[tuple[int,
 
     if path == "/builds/mine":
         payload = dict(body)
-        if not payload.get("title") and payload.get("pobCode"):
+        raw_pob = str(payload.get("pobCode") or "").strip()
+        if not raw_pob:
+            raise ValueError("我的 BD 的 PoB2 分享码为空")
+        pob_parser.decode_pob(raw_pob)
+        payload["pobCode"] = raw_pob
+        if not payload.get("title"):
             try:
-                prof = build_profile.extract_profile(payload["pobCode"], run_simulation=False)
+                prof = build_profile.extract_profile(raw_pob, run_simulation=False)
                 payload["title"] = prof["positioning"].get("archetype") or ""
             except Exception:
                 pass

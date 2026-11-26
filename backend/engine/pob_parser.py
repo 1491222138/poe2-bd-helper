@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import re
 import xml.etree.ElementTree as ET
 import zlib
@@ -26,18 +27,45 @@ _RUNE_SUFFIX_RE = re.compile(r"\s*\(rune\)\s*$", re.I)
 
 def decode_pob(code: str) -> str:
     """支持 PoB2 分享码（Base64 + zlib）或直接传入 XML。"""
-    s = (code or "").strip()
+    s = (code or "").replace("\ufeff", "").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "").strip()
     if not s:
         raise ValueError("PoB 分享码为空")
     if s.startswith("<?xml") or s.startswith("<PathOfBuilding"):
         return s
+    if re.match(r"^https?://", s, re.I):
+        raise ValueError(
+            "检测到粘贴的是网页链接而非 PoB2 分享码：请在 poe.ninja / pobb.in 页面点击「Copy PoB code」复制完整分享码，或使用浏览器扩展导入。"
+        )
     b = re.sub(r"\s+", "", s).replace("-", "+").replace("_", "/")
+    if not b or not re.fullmatch(r"[A-Za-z0-9+/=]+", b):
+        preview = s[:40] + ("..." if len(s) > 40 else "")
+        raise ValueError(
+            f"PoB2 分享码格式无效（包含非法字符，长度 {len(s)}，片段：{preview!r}）：请粘贴完整的 PoB2 分享码或 XML。"
+        )
+    b = b.rstrip("=")
+    if len(b) % 4 == 1:
+        preview = s[:40] + ("..." if len(s) > 40 else "")
+        raise ValueError(
+            f"PoB2 分享码无效或被截断（有效字符 {len(b)}，片段：{preview!r}）：请重新复制完整的 PoB2 分享码。"
+        )
     b += "=" * ((4 - len(b) % 4) % 4)
-    raw = base64.b64decode(b)
+    try:
+        raw = base64.b64decode(b, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(
+            f"PoB2 分享码 Base64 解码失败（长度 {len(s)}）：请确认粘贴的是完整的 PoB2 分享码。"
+        ) from exc
     try:
         return zlib.decompress(raw).decode("utf-8")
     except zlib.error:
-        return zlib.decompress(raw, -zlib.MAX_WBITS).decode("utf-8")
+        try:
+            return zlib.decompress(raw, -zlib.MAX_WBITS).decode("utf-8")
+        except (zlib.error, UnicodeDecodeError) as exc:
+            raise ValueError(
+                "PoB2 分享码解压失败：内容不是有效的 PoB2 导出数据，请重新从 PoB2 或 poe.ninja 复制分享码。"
+            ) from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError("PoB2 分享码解码后不是有效的 UTF-8 XML，请重新复制完整的 PoB2 分享码。") from exc
 
 
 def encode_pob(xml_text: str) -> str:

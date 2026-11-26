@@ -54,21 +54,22 @@ class TestJewelsInGapAndMutator(unittest.TestCase):
         tgt_xml_mod, ok = xml_mutator.swap_tree_jewel(tgt_xml, str(j0["nodeId"]), better_jewel)
         self.assertTrue(ok)
 
-        rt = WorkbenchRuntime()
-        try:
-            report = gap_analyzer.analyze_gap(my_xml, tgt_xml_mod, rt.pool())
-            jewel_steps = [u for u in report["slotUpgrades"] if "Jewel" in u["slot"]]
-            self.assertGreaterEqual(len(jewel_steps), 3)
-            changed = next((u for u in jewel_steps if u["slot"] == j0["slot"]), None)
-            self.assertIsNotNone(changed)
-            self.assertFalse(changed.get("isIdentical"))
+        with tempfile.TemporaryDirectory() as tmp:
+            rt = WorkbenchRuntime(state_dir=tmp)
+            try:
+                report = gap_analyzer.analyze_gap(my_xml, tgt_xml_mod, rt.pool())
+                jewel_steps = [u for u in report["slotUpgrades"] if "Jewel" in u["slot"]]
+                self.assertGreaterEqual(len(jewel_steps), 3)
+                changed = next((u for u in jewel_steps if u["slot"] == j0["slot"]), None)
+                self.assertIsNotNone(changed)
+                self.assertFalse(changed.get("isIdentical"))
 
-            # 验证 analyze_slot_affixes 也支持直接剥离珠宝词缀
-            aff_rep = gap_analyzer.analyze_slot_affixes(my_xml, tgt_xml_mod, j0["slot"], rt.pool())
-            self.assertEqual(aff_rep["itemName"], "Mirror Jewel")
-            self.assertEqual(len(aff_rep["affixes"]), 2)
-        finally:
-            rt.shutdown()
+                # 验证 analyze_slot_affixes 也支持直接剥离珠宝词缀
+                aff_rep = gap_analyzer.analyze_slot_affixes(my_xml, tgt_xml_mod, j0["slot"], rt.pool())
+                self.assertEqual(aff_rep["itemName"], "Mirror Jewel")
+                self.assertEqual(len(aff_rep["affixes"]), 2)
+            finally:
+                rt.shutdown()
 
 
 class TestLlmAdvisorAndEndpoints(unittest.TestCase):

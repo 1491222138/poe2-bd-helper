@@ -15,8 +15,11 @@ dist/
 build/
 .vite/
 
-# Rust / Tauri
+# Rust / Tauri & Sidecar Build Outputs
 target/
+.pyinstaller-build/
+desktop/src-tauri/resources/
+release-assets/
 
 # OS & Editor
 .DS_Store

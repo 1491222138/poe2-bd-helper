@@ -1,0 +1,130 @@
+name: Release Installers
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-extension:
+    name: Build Chrome/Edge Extension Zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build extension
+        working-directory: extension
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Package extension zip
+        run: |
+          mkdir -p release-assets
+          (cd extension/dist && zip -r ../../release-assets/poe2-workbench-extension.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: release-assets/poe2-workbench-extension.zip
+
+  build-desktop:
+    name: Build Desktop (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            os: macos-latest
+          - platform: windows-x64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Prepare LuaJIT (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install luajit
+          echo "LUAJIT_BIN=$(which luajit)" >> "$GITHUB_ENV"
+
+      - name: Build standalone LuaJIT (Windows MSVC)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          git clone --depth 1 https://github.com/LuaJIT/LuaJIT.git "%TEMP%\LuaJIT"
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cd /d "%TEMP%\LuaJIT\src"
+          call msvcbuild.bat
+          echo LUAJIT_BIN=%TEMP%\LuaJIT\src\luajit.exe>> "%GITHUB_ENV%"
+
+      - name: Build Desktop Web Frontend
+        working-directory: desktop/web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Bundled Python Backend Sidecar + LuaJIT
+        run: python scripts/build_backend_sidecar.py --luajit-path "${{ env.LUAJIT_BIN }}"
+
+      - name: Build Tauri 2 Installer
+        working-directory: desktop
+        run: |
+          npx --yes @tauri-apps/cli@2 build --config src-tauri/tauri.release.conf.json
+
+      - name: Collect Release Artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release-assets
+          cp desktop/src-tauri/target/release/bundle/dmg/*.dmg release-assets/ || true
+
+      - name: Collect Release Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Get-ChildItem -Path desktop/src-tauri/target/release/bundle/nsis -Filter *.exe -ErrorAction SilentlyContinue | Copy-Item -Destination release-assets/
+          Get-ChildItem -Path desktop/src-tauri/target/release/bundle/msi -Filter *.msi -ErrorAction SilentlyContinue | Copy-Item -Destination release-assets/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: release-assets/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-extension, build-desktop]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: all-artifacts/*

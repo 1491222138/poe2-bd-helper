@@ -12,21 +12,21 @@
 
 ---
 
-## 2. 双电脑协作与仓库布局约定
+## 2. 跨平台协作与引擎资产约定
 
-解决两台电脑（如 Mac + Windows/WSL）协同开发与大体积引擎资产共享问题：
+兼顾个人多设备开发、开源分发与大体积 PoB2 计算资产管理：
 
-- **代码仓库（走 Git 私有库，不放 OneDrive）**
-  - Mac 路径：`/Users/moyu/Desktop/poe2-workbench`（纯本地，不放 OneDrive）
-  - Windows/WSL 路径：`~/repos/poe2-workbench`
-  - 通过 GitHub / Gitee 私有仓库同步源码、文档、类型契约与测试，避免 OneDrive 同步 `.git`、`node_modules/`、`target/` 产生冲突与路径损坏。
-- **只读大体积引擎资产（留在 OneDrive 或本机独立目录，不入 Git）**
-  - `PathOfBuilding-PoE2`（~449MB，含 12 处 Lua 5.1 语法兼容修复）继续保留在 OneDrive（或本机固定路径）。
-  - 每台电脑在仓库根目录放一个不入 Git 的 `.env.local`，仅配置一行：
+- **代码仓库（轻量纯源码，不提交引擎资产）**
+  - 仓库不提交大体积 `pob2-engine/`、`.env.local`、`node_modules/`、`dist/`、`target/` 与本地运行时缓存。
+  - 后端零第三方 Python 依赖（纯标准库），支持源码直跑与 PyInstaller 独立打包为 Tauri Sidecar。
+- **PoB2 计算内核（自动探测 + 一键从 GitHub 精简托管下载）**
+  - 软件启动时按 `环境变量 POB2_ROOT` → `~/.poe2-workbench/engine_config.json` → `.env.local` → `~/.poe2-workbench/pob2-engine`（一键托管目录）→ 系统常见 PoB2 安装目录的顺序自动探测。
+  - 若本机已安装官方 Path of Building (PoE2) 可直接复用（零入侵原版目录）；未安装时可在桌面端「内核向导」一键从 GitHub 拉取精简纯计算脚本与数据（自动跳过大贴图与字体）。
+  - 仓库内保留 `pob2-engine.lock`（21KB）记录已验证的上游基准版本（如 `v0.23.1`）。
+  - 开发者也可在仓库根目录放一个不入 Git 的 `.env.local` 指定本地调试路径：
     ```env
-    POB2_ROOT=/Users/moyu/Library/CloudStorage/OneDrive-个人/poe2-ninja-analyzer/pob2-engine/PathOfBuilding-PoE2
+    POB2_ROOT=/path/to/PathOfBuilding-PoE2
     ```
-  - 仓库内保留 `pob2-engine.lock`（21KB），启动/CI 时自动校验引擎资产未被意外破坏。
 
 ---
 

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "patch": "0.5.5",
+  "leagueName": "Forbidden Rites",
+  "notes": "PoE2 终局靶标血量、6人/迷雾缩放与防猝死软上限外部配置（1.0 上线时仅需替换本文件，零代码硬改）。",
+  "partyScaling": {
+    "party6NormalMult": 3.5,
+    "party6MagicMult": 4.0,
+    "party6RareMult": 5.0,
+    "party6BossMult": 6.0,
+    "delirium100EffHpMult": 2.0,
+    "delirium200EffHpMult": 3.0,
+    "party6Delirium200RareMult": 15.0
+  },
+  "targets": {
+    "t15_rare_solo": {
+      "label": "单人 T15/T16 稀有金怪",
+      "hp": 350000,
+      "comfortTtkSec": 1.5,
+      "capTtkSec": 0.5
+    },
+    "divinity_arbiter_solo": {
+      "label": "单人神性仲裁者 (双阶段合计)",
+      "hp": 15000000,
+      "comfortTtkSec": 8.0,
+      "capTtkSec": 2.0
+    },
+    "uber_arbiter_solo": {
+      "label": "单人 Uber 灰烬仲裁者",
+      "hp": 22600000,
+      "comfortTtkSec": 10.0,
+      "capTtkSec": 2.0
+    },
+    "t4_xesht_solo": {
+      "label": "单人 T4 满难泽什特",
+      "hp": 32000000,
+      "comfortTtkSec": 12.0,
+      "capTtkSec": 2.5
+    },
+    "party6_200deli_rare": {
+      "label": "6人 200% 迷雾稀有金怪 (15x)",
+      "hp": 5250000,
+      "comfortTtkSec": 2.5,
+      "capTtkSec": 1.0
+    },
+    "party6_uber_boss": {
+      "label": "6人满队 Uber 巅峰 Boss (6x)",
+      "hp": 135600000,
+      "comfortTtkSec": 6.0,
+      "capTtkSec": 3.0
+    }
+  },
+  "defenseCaps": {
+    "deflectionRatingCap": 28800,
+    "deflectionRatingCapBlinded": 23050,
+    "deflectionMaxChancePct": 95,
+    "deflectionDamageReductionPct": 40,
+    "evasionMaxChancePct": 95,
+    "ciRecommendedMinEs": 5000,
+    "tankPhysMaxHitCap": 22000,
+    "tankEleMaxHitCap": 45000
+  },
+  "manaSustain": {
+    "denseMapKillsPerSec": 6.0,
+    "defaultCadenceSetupUses": 3,
+    "defaultCadenceCycleSec": 1.5,
+    "defaultManaFlaskTotalRecovery": 2400,
+    "bossSafetyMarginMult": 1.5
+  }
+}

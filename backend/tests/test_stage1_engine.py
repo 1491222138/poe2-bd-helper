@@ -68,6 +68,38 @@ class TestXmlMutatorAndRunefix(unittest.TestCase):
         self.assertIn("+12% to Fire Resistance", out)
         self.assertIn("{enchant}{rune}Bonded:", out)
 
+    def test_runefix_skips_native_rune_items_and_anoints(self) -> None:
+        xml = (
+            "<Items>"
+            '<Item id="1">\n'
+            "Rarity: RARE\nWrath Song\nDueling Wand\n"
+            "Rune: Legacy of Lifesprig\n"
+            "Implicits: 2\n"
+            "{enchant}{rune}+3 to Level of all Spell Skills\n"
+            "{enchant}Allocates Dominion\n"
+            "</Item>"
+            '<Item id="2">\n'
+            "Rarity: RARE\nLegacy Helm\n"
+            "Implicits: 1\n"
+            "{enchant}{rune}+25% to Cold Resistance\n"
+            "</Item>"
+            '<Item id="3">\n'
+            "Rarity: RARE\nFulgent Curio\nSapphire\n"
+            "Implicits: 1\n"
+            "{enchant}Corrupted Blood cannot be inflicted on you\n"
+            "</Item>"
+            "</Items>"
+        )
+        out, fixed = runefix.normalize_runes(xml)
+        self.assertEqual(fixed, 1)
+        # 含原生 Rune: 的装备不应被剥离前缀，避免 PoB2 0.5 双重计算
+        self.assertIn("{enchant}{rune}+3 to Level of all Spell Skills", out)
+        self.assertIn("{enchant}Allocates Dominion", out)
+        # 纯 {enchant}（如腐化珠宝附魔）也不应被剥离
+        self.assertIn("{enchant}Corrupted Blood cannot be inflicted on you", out)
+        # 旧格式无 Rune: 行的装备仍按兜底剥离
+        self.assertIn("\n+25% to Cold Resistance\n", out)
+
 
 class TestAuthAndEngineLock(unittest.TestCase):
     def test_origin_and_token(self) -> None:
@@ -79,6 +111,10 @@ class TestAuthAndEngineLock(unittest.TestCase):
         self.assertFalse(auth.token_ok("wrong", "secret-1"))
 
     def test_engine_lock_clean(self) -> None:
+        from backend.config import managed_pob2_dir, pob2_root
+
+        if os.path.abspath(pob2_root()) == os.path.abspath(managed_pob2_dir()):
+            self.skipTest("托管拉取的 PoB2 内核包含自动 Lua 5.1 兼容补丁，跳过锁文件逐字节比对")
         ok, info = check_engine.verify()
         self.assertTrue(ok, f"引擎锁校验失败：{info}")
 

@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "types": ["chrome", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@contracts": ["../packages/contracts/index.ts"],
+      "@contracts/*": ["../packages/contracts/*"],
+      "@ui": ["../packages/ui/index.ts"],
+      "@ui/*": ["../packages/ui/*"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"]
+    }
+  },
+  "include": ["src", "../packages/contracts", "../packages/ui"]
+}

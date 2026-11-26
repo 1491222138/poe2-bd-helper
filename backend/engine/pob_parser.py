@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import zlib
 from typing import Any
 
-from backend.engine.tree_index import summarize_allocated_nodes
+from backend.engine.tree_index import lookup_notable_by_name, summarize_allocated_nodes
 
 _META_PREFIXES = (
     "Rarity:", "Unique ID:", "Item Level:", "Quality:", "Sockets:",
@@ -40,18 +40,42 @@ def decode_pob(code: str) -> str:
         return zlib.decompress(raw, -zlib.MAX_WBITS).decode("utf-8")
 
 
+def encode_pob(xml_text: str) -> str:
+    """将 PoB2 XML 编码为标准 PoB2 分享码（zlib + urlsafe base64）。"""
+    compressed = zlib.compress(xml_text.encode("utf-8"), level=9)
+    return base64.urlsafe_b64encode(compressed).decode("ascii")
+
+
 def parse_item_text(raw_text: str) -> dict[str, Any]:
     lines = [l.strip() for l in (raw_text or "").splitlines() if l.strip()]
     rarity = "UNKNOWN"
     item_level = ""
+    item_level_num = 0
+    level_req = 0
     quality = ""
     corrupted = False
     socket_count = 0
     socketed_runes: list[str] = []
+    rune_entries: list[str] = []
     header_lines: list[str] = []
+    properties: dict[str, str] = {}
     mods: list[str] = []
+    mod_details: list[dict[str, Any]] = []
     in_mods = False
+    implicits_remaining = 0
     active_variants: set[str] = set()
+    _KEEP_PROPS = (
+        "Ward:",
+        "Energy Shield:",
+        "Evasion:",
+        "Armour:",
+        "Spirit:",
+        "Charm Slots:",
+        "Physical Damage:",
+        "Elemental Damage:",
+        "Critical Strike Chance:",
+        "Attacks per Second:",
+    )
 
     for line in lines:
         if line.startswith("Selected Variant:") or line.startswith("Alt Variant"):
@@ -77,35 +101,87 @@ def parse_item_text(raw_text: str) -> dict[str, Any]:
             continue
         if line.startswith("Item Level:"):
             item_level = line.split(":", 1)[1].strip()
+            try:
+                item_level_num = int(re.findall(r"\d+", item_level)[0])
+            except Exception:
+                item_level_num = 0
+            continue
+        if line.startswith("LevelReq:"):
+            try:
+                level_req = int(re.findall(r"\d+", line.split(":", 1)[1])[0])
+            except Exception:
+                level_req = 0
             continue
         if line.startswith("Sockets:"):
             socket_count = len(re.findall(r"[A-Za-z]", line.split(":", 1)[1]))
             continue
         if line.startswith("Rune:"):
             rt = line.split(":", 1)[1].strip()
-            if rt:
+            if rt and rt.lower() != "none":
                 socketed_runes.append(rt)
+                rune_entries.append(rt)
             continue
         if line == "Corrupted":
             corrupted = True
             continue
         if line.startswith("Implicits:"):
             in_mods = True
+            try:
+                implicits_remaining = int(re.findall(r"\d+", line.split(":", 1)[1])[0])
+            except Exception:
+                implicits_remaining = 0
             continue
 
         if not in_mods:
+            matched_prop = False
+            for pref in _KEEP_PROPS:
+                if line.startswith(pref):
+                    properties[pref[:-1]] = line.split(":", 1)[1].strip()
+                    matched_prop = True
+                    break
+            if matched_prop:
+                continue
             if not line.startswith(_META_PREFIXES) and not line.startswith("{") and len(header_lines) < 2:
                 header_lines.append(line)
         else:
             if not variant_active(line):
                 continue
-            is_rune = "{rune}" in line.lower() or bool(_RUNE_SUFFIX_RE.search(line))
+            low = line.lower()
+            is_rune = "{rune}" in low or bool(_RUNE_SUFFIX_RE.search(line))
             clean = _RUNE_SUFFIX_RE.sub("", _BRACE_TAG_RE.sub("", line)).strip()
             if clean and not clean.startswith("Note:"):
+                was_implicit_slot = implicits_remaining > 0
+                if implicits_remaining > 0:
+                    implicits_remaining -= 1
+                is_anoint = bool(re.match(r"^allocates\s+", clean, re.I))
+                is_bonded = bool(re.match(r"^bonded\s*:", clean, re.I))
                 if is_rune:
+                    origin = "rune"
                     socketed_runes.append(clean)
-                else:
+                elif "{fractured}" in low:
+                    origin = "fractured"
                     mods.append(clean)
+                elif "{desecrated}" in low:
+                    origin = "desecrated"
+                    mods.append(clean)
+                elif "{crafted}" in low:
+                    origin = "crafted"
+                    mods.append(clean)
+                elif "{enchant}" in low or is_anoint:
+                    origin = "enchant"
+                    mods.append(clean)
+                elif was_implicit_slot:
+                    origin = "implicit"
+                    mods.append(clean)
+                else:
+                    origin = "explicit"
+                    mods.append(clean)
+                detail: dict[str, Any] = {"text": clean, "origin": origin}
+                if is_anoint:
+                    detail["isAnoint"] = True
+                if is_bonded:
+                    detail["isBonded"] = True
+                mod_details.append(detail)
 
     if len(header_lines) >= 2:
         name, base_type = header_lines[0], header_lines[1]
@@ -114,18 +190,25 @@ def parse_item_text(raw_text: str) -> dict[str, Any]:
     else:
         name = base_type = ""
 
-    return {
+    out: dict[str, Any] = {
         "rarity": rarity,
         "name": name,
         "baseType": base_type,
         "quality": quality,
-        "itemLevel": item_level,
+        "itemLevel": item_level_num if item_level_num > 0 else item_level,
         "corrupted": corrupted,
         "socketCount": socket_count,
         "socketedRunes": list(dict.fromkeys(socketed_runes)),
+        "runeEntries": rune_entries,
         "mods": mods,
+        "modDetails": mod_details,
         "rawText": (raw_text or "").strip(),
     }
+    if level_req > 0:
+        out["levelReq"] = level_req
+    if properties:
+        out["properties"] = properties
+    return out
 
 
 def _is_jewel(slot_name: str, item: dict[str, Any]) -> bool:
@@ -264,26 +347,99 @@ def parse_pob_xml(xml_text: str) -> dict[str, Any]:
             for gem in sk.findall("Gem"):
                 if gem.attrib.get("enabled") == "false":
                     continue
-                gems.append({
+                def _opt_int(raw_v: str | None) -> int | None:
+                    if not raw_v or raw_v == "nil":
+                        return None
+                    try:
+                        return int(float(raw_v))
+                    except ValueError:
+                        return None
+                gem_entry: dict[str, Any] = {
                     "name": gem.attrib.get("nameSpec") or gem.attrib.get("skillId") or gem.attrib.get("gemId") or "Unknown",
                     "skillId": gem.attrib.get("skillId") or "",
                     "level": int(gem.attrib.get("level") or 1),
                     "quality": int(gem.attrib.get("quality") or 0),
                     "weaponSet": gem.attrib.get("weaponSet") or "",
-                })
+                }
+                g_cnt = _opt_int(gem.attrib.get("count"))
+                if g_cnt is not None and g_cnt > 1:
+                    gem_entry["count"] = g_cnt
+                g_part = _opt_int(gem.attrib.get("skillPart"))
+                if g_part is not None and g_part > 0:
+                    gem_entry["skillPart"] = g_part
+                g_stage = _opt_int(gem.attrib.get("skillStageCount"))
+                if g_stage is not None and g_stage > 0:
+                    gem_entry["skillStageCount"] = g_stage
+                gems.append(gem_entry)
             if gems:
+                raw_mas = sk.attrib.get("mainActiveSkill") or sk.attrib.get("mainActiveSkillCalcs") or ""
+                try:
+                    main_active_idx = int(raw_mas) if raw_mas and raw_mas != "nil" else None
+                except ValueError:
+                    main_active_idx = None
                 skill_groups.append({
                     "index": idx,
                     "isMain": idx == character["mainSocketGroup"],
+                    "mainActiveSkill": main_active_idx,
+                    "includeInFullDPS": (sk.attrib.get("includeInFullDPS") or "").lower() == "true",
                     "slot": slot,
                     "label": sk.attrib.get("label") or "",
                     "weaponSet": ws,
                     "gems": gems,
                 })
 
-    # 5. 双武器组概览
+    # 5. 双武器组概览与涂油大点解析
     set1 = [it for it in equipped if it["slot"].lower() in ("weapon 1", "weapon 2")]
     set2 = [it for it in equipped if it["slot"].lower() in ("weapon 1 swap", "weapon 2 swap")]
+    use_second_ws = (
+        (active_set.attrib.get("useSecondWeaponSet") if active_set is not None else None)
+        or (items_el.attrib.get("useSecondWeaponSet") if items_el is not None else None)
+        or ""
+    ).lower() == "true"
+    has_dual_gear = bool(set1) and bool(set2)
+    has_dual_tree = bool(tree_summary.get("weaponSet1Notables")) and bool(tree_summary.get("weaponSet2Notables"))
+
+    anointed: list[dict[str, Any]] = []
+    seen_anoints: set[str] = set()
+    alloc_re = re.compile(r"^Allocates\s+(.+)$", re.I)
+    for it in equipped:
+        for mod in it.get("mods") or []:
+            m = alloc_re.match(mod.strip())
+            if not m:
+                continue
+            aname = m.group(1).strip()
+            if not aname or aname.lower() in seen_anoints:
+                continue
+            seen_anoints.add(aname.lower())
+            info = lookup_notable_by_name(aname, tree_version=tree_summary.get("treeVersion") or None)
+            anointed.append({
+                "slot": it.get("slot") or "",
+                "itemName": it.get("name") or it.get("baseType") or "",
+                "name": info["name"] if info else aname,
+                "stats": list(info.get("stats") or []) if info else [],
+            })
+    tree_summary["anointedNotables"] = anointed
+
+    # 6. Config 实战勾选配置解析
+    config_inputs: dict[str, Any] = {}
+    cfg_el = root.find("Config")
+    if cfg_el is not None:
+        acid = cfg_el.attrib.get("activeConfigSet") or "1"
+        active_cfg = cfg_el.find(f"ConfigSet[@id='{acid}']") or cfg_el.find("ConfigSet") or cfg_el
+        for inp in active_cfg.findall("Input"):
+            name = (inp.attrib.get("name") or "").strip()
+            if not name or name.startswith("quest"):
+                continue
+            if "boolean" in inp.attrib:
+                config_inputs[name] = inp.attrib["boolean"].lower() == "true"
+            elif "number" in inp.attrib:
+                try:
+                    n = float(inp.attrib["number"])
+                    config_inputs[name] = int(n) if n.is_integer() else n
+                except ValueError:
+                    config_inputs[name] = inp.attrib["number"]
+            elif "string" in inp.attrib:
+                config_inputs[name] = inp.attrib["string"]
 
     notes_el = root.find("Notes")
     notes = (notes_el.text or "").strip()[:1200] if notes_el is not None else ""
@@ -291,13 +447,33 @@ def parse_pob_xml(xml_text: str) -> dict[str, Any]:
     return {
         "character": character,
         "passiveTree": tree_summary,
-        "weaponSets": {"hasDualWeaponSet": bool(set2), "set1": set1, "set2": set2},
+        "weaponSets": {
+            "hasDualWeaponSet": bool(has_dual_gear or has_dual_tree),
+            "hasDualWeaponGear": has_dual_gear,
+            "hasDualWeaponTree": has_dual_tree,
+            "activeWeaponSet": 2 if use_second_ws else 1,
+            "set1": set1,
+            "set2": set2,
+        },
         "equippedItems": equipped,
         "jewels": jewels,
         "flasksAndCharms": flasks,
         "skillGroups": skill_groups,
+        "config": config_inputs,
         "notes": notes,
     }
+
+
+def extract_allocated_node_ids(xml_text: str) -> list[str]:
+    """提取当前激活天赋树 <Spec nodes="..."> 中的全部已分配节点 ID（含升华大小点与起点）。"""
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return []
+    spec = _active_spec(root)
+    if spec is None:
+        return []
+    return [n.strip() for n in (spec.attrib.get("nodes") or "").split(",") if n.strip()]
 
 
 def parse_pob_code(code: str) -> dict[str, Any]:

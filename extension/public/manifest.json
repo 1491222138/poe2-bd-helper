@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "PoE2 Workbench 侦察兵",
+  "version": "1.0.0",
+  "description": "PoE2 目标 BD 定位拆解、官方市集三档核价（原件/平替/半成品）与本地工作台双向联动扩展。",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://poe.ninja/*",
+    "https://pobb.in/*",
+    "https://pastebin.com/*",
+    "https://api.poe2scout.com/*",
+    "https://www.pathofexile.com/*",
+    "https://raw.githubusercontent.com/*",
+    "http://127.0.0.1:8788/*",
+    "http://localhost:8788/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "action": {
+    "default_title": "打开 PoE2 Workbench 侦察侧边栏",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://poe.ninja/poe2/*",
+        "https://pobb.in/*",
+        "https://poe2htc.com/*",
+        "https://www.poe2htc.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

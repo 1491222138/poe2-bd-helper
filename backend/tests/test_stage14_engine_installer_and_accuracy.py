@@ -82,7 +82,8 @@ class TestEngineManagerAndInstaller(unittest.TestCase):
 
             def fake_downloader(_url: str, dest_zip: str, on_progress: Any) -> int:
                 with zipfile.ZipFile(dest_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    zf.writestr("PathOfBuilding-PoE2-0.23.1/src/HeadlessWrapper.lua", "local x = 1\n")
+                    # 模拟真实 PoB2 HeadlessWrapper.lua 首行带 `#@` shebang
+                    zf.writestr("PathOfBuilding-PoE2-0.23.1/src/HeadlessWrapper.lua", "#@\nlocal x = 1\n")
                     zf.writestr(
                         "PathOfBuilding-PoE2-0.23.1/src/Modules/Calc.lua",
                         "local a, b = table.unpack({1, 2})\n",
@@ -114,9 +115,10 @@ class TestEngineManagerAndInstaller(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(managed, "src", "Assets", "huge_art.png")))
             self.assertFalse(os.path.exists(os.path.join(td, "escape.lua")))
 
-            # 验证 Lua 5.1 补丁已幂等写入
+            # 验证 Lua 5.1 补丁已幂等写入，且首行 `#@` 仍位于第 1 行（不被顶到第 10 行导致 LuaJIT 语法错误）
             with open(os.path.join(managed, "src", "HeadlessWrapper.lua"), encoding="utf-8") as f:
                 hw = f.read()
+            self.assertTrue(hw.startswith("#@\n"), f"shebang 必须保持在首行，实际开头: {hw[:40]!r}")
             self.assertIn("table.unpack = unpack", hw)
             with open(os.path.join(managed, "src", "Modules", "Calc.lua"), encoding="utf-8") as f:
                 calc = f.read()

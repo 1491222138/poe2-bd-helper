@@ -22,16 +22,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.poe2-workbench/pob2-engine
-          key: pob2-kernel-${{ hashFiles('pob2-engine.lock') }}
+          key: pob2-kernel-v2-${{ hashFiles('pob2-engine.lock') }}
       - name: Bootstrap PoB2 kernel via built-in installer (if cache miss)
         run: |
           python3 -c "
-          import os
           from backend.config import managed_pob2_dir
           from backend.engine import engine_manager
-          if not engine_manager.inspect_pob2_dir(managed_pob2_dir())['valid']:
+          info = engine_manager.inspect_pob2_dir(managed_pob2_dir())
+          if not info['valid']:
               st = engine_manager.install_from_github_zip(verify_live=True)
               assert st['ready'], f'PoB2 kernel not ready: {st}'
+          else:
+              engine_manager.apply_lua51_compat_patches(info['srcDir'])
+          smoke = engine_manager.test_live_engine()
+          assert smoke['ok'], f'PoB2 live LuaJIT smoke failed: {smoke}'
           "
       - name: Run full Python + LuaJIT test suite
         env:

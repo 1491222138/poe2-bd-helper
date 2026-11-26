@@ -346,21 +346,41 @@ end
 """
 
 
+def _inject_prelude_preserving_shebang(hw_text: str) -> str:
+    """将 Lua 5.1 兼容垫片插入 HeadlessWrapper.lua，保留首行 `#@` / `#!` shebang 在第 1 行。"""
+    text = hw_text.lstrip("\ufeff")
+    if _COMPAT_MARKER in text:
+        # 自愈：若旧版补丁已把首行 `#@` / `#!` 顶到了后续行，将其还原到第 1 行
+        lines = text.splitlines(keepends=True)
+        for i in range(1, min(len(lines), 20)):
+            if lines[i].startswith("#"):
+                shebang = lines.pop(i)
+                return shebang + "".join(lines)
+        return hw_text
+
+    if text.startswith("#"):
+        first_line, sep, rest = text.partition("\n")
+        nl = sep or "\n"
+        return f"{first_line}{nl}{_LUA51_PRELUDE}\n{rest}"
+    return _LUA51_PRELUDE + "\n" + text
+
+
 def apply_lua51_compat_patches(src_dir: str) -> dict[str, Any]:
     """对托管下载的 PoB2 src/ 目录执行幂等 LuaJIT / Lua 5.1 兼容修补。
 
     修复点：
-      1. HeadlessWrapper.lua 注入 table.unpack / bit32 兼容垫片（防止非 LUA52COMPAT 编译的 LuaJIT 报错）；
-      2. 扫描常见 Lua 5.2+ 整数除法 '//' 或 '::continue::' 在纯 Lua 5.1 环境下的潜在兼容问题（仅做安全定向替换）。
+      1. HeadlessWrapper.lua 注入 table.unpack / bit32 兼容垫片（保留首行 `#@` / `#!` 不被顶到第 10 行）；
+      2. 扫描核心脚本目录，将 table.unpack 调用做安全降级保护。
     """
     patched_files: list[str] = []
     hw_path = os.path.join(src_dir, "HeadlessWrapper.lua")
     if os.path.isfile(hw_path):
         with open(hw_path, encoding="utf-8", errors="replace") as f:
             hw_text = f.read()
-        if _COMPAT_MARKER not in hw_text:
+        new_hw = _inject_prelude_preserving_shebang(hw_text)
+        if new_hw != hw_text:
             with open(hw_path, "w", encoding="utf-8") as f:
-                f.write(_LUA51_PRELUDE + "\n" + hw_text)
+                f.write(new_hw)
             patched_files.append("HeadlessWrapper.lua")
 
     # 扫描核心脚本目录，将仅在 Lua 5.3+ 存在的 math.tointeger 调用做安全降级保护

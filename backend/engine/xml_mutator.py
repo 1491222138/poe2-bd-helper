@@ -700,8 +700,11 @@ def downgrade_skill_gem(
 
 
 def inject_custom_mods(xml: str, mod_lines: list[str], *, title: str = "WorkbenchProbe") -> str:
-    """往 PoB2 激活的 <ConfigSet>（或 <Config>）注入 <CustomModifierBlock> 全局探针词缀。
+    """往 PoB2 激活的 <ConfigSet>（或 <Config>）注入全局探针词缀。
 
+    同时兼容两代 PoB2 ConfigTab XML 格式（且各自只生效一次、不重复叠加）：
+      - v0.23.1 等版本读取 `<Input name="customMods" string="..." />`（忽略 `<CustomModifierBlock>`）；
+      - 新版 PoB2 在存在非空 `<CustomModifierBlock>` 时仅读取 `<CustomModifierBlock>`（忽略旧 `<Input name="customMods">`）。
     不触碰任何已穿戴装备，彻底避免卡兰德戒指、精巧腰带、本地护甲/武器倍率放大对灵敏度测算的干扰。
     """
     cleaned = [str(m).strip() for m in (mod_lines or []) if str(m).strip()]
@@ -718,8 +721,44 @@ def inject_custom_mods(xml: str, mod_lines: list[str], *, title: str = "Workbenc
         active_id = str(cfg.attrib.get("activeConfigSet") or "1")
         target_parent = next((cs for cs in csets if str(cs.attrib.get("id") or "") == active_id), csets[0])
 
+    existing_blocks = target_parent.findall("CustomModifierBlock")
+    existing_input: ET.Element | None = next(
+        (el for el in target_parent.findall("Input") if str(el.attrib.get("name") or "") == "customMods"),
+        None,
+    )
+    legacy_text = str(existing_input.attrib.get("string") or "").strip() if existing_input is not None else ""
+
+    # 若原 XML 只有旧版 <Input name="customMods"> 而无 <CustomModifierBlock>，先保留原词缀进 block，防止新版 PoB2 丢失
+    if legacy_text and not existing_blocks:
+        legacy_block = ET.SubElement(target_parent, "CustomModifierBlock", {"title": "Default", "enabled": "true"})
+        legacy_block.text = "\n" + legacy_text + "\n"
+        existing_blocks = [legacy_block]
+
+    # 1. 新版 PoB2：追加 <CustomModifierBlock>
+    new_text = "\n".join(cleaned)
     block = ET.SubElement(target_parent, "CustomModifierBlock", {"title": title, "enabled": "true"})
-    block.text = "\n" + "\n".join(cleaned) + "\n"
+    block.text = "\n" + new_text + "\n"
+
+    # 2. v0.23.1 兼容：同步汇总所有已启用词缀到 <Input name="customMods" string="..." />
+    merged_parts: list[str] = []
+    if existing_blocks:
+        for blk in existing_blocks:
+            enabled_attr = str(blk.attrib.get("enabled") or "true").strip().lower()
+            if enabled_attr == "false":
+                continue
+            bt = (blk.text or "").strip()
+            if bt:
+                merged_parts.append(bt)
+    elif legacy_text:
+        merged_parts.append(legacy_text)
+    merged_parts.append(new_text)
+    merged_str = "\n".join(merged_parts)
+
+    if existing_input is None:
+        existing_input = ET.SubElement(target_parent, "Input", {"name": "customMods", "string": merged_str})
+    else:
+        existing_input.set("string", merged_str)
+
     return ET.tostring(root, encoding="unicode")
 
 
